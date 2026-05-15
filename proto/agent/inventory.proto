@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+package agent;
+option go_package = "rmm-platform/proto/agent;agentpb";
+
+message InstalledSoftware {
+  string name = 1;
+  string version = 2;
+  string publisher = 3;
+  string source = 4;
+}
+
+message DiskInfo {
+  string mount_point = 1;
+  uint64 total_bytes = 2;
+  uint64 free_bytes = 3;
+}
+
+message InventorySnapshot {
+  string hostname = 1;
+  string os_family = 2;
+  string os_version = 3;
+  string architecture = 4;
+  uint32 cpu_cores = 5;
+  uint64 memory_bytes = 6;
+  repeated DiskInfo disks = 7;
+  repeated InstalledSoftware software = 8;
+}

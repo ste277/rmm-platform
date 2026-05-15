@@ -1,0 +1,9 @@
+DROP TABLE IF EXISTS metric_samples;
+DROP TABLE IF EXISTS compliance_findings;
+DROP TABLE IF EXISTS compliance_reports;
+DROP TABLE IF EXISTS command_results;
+DROP TABLE IF EXISTS commands;
+DROP TABLE IF EXISTS installed_software;
+DROP TABLE IF EXISTS agent_inventory_snapshots;
+DROP TABLE IF EXISTS agents;
+DROP TABLE IF EXISTS tenants;

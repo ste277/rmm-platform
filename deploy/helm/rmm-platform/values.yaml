@@ -1,0 +1,11 @@
+global:
+  imagePullPolicy: IfNotPresent
+
+postgres:
+  enabled: true
+
+redis:
+  enabled: true
+
+nats:
+  enabled: true

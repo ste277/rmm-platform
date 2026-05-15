@@ -1,0 +1,15 @@
+[Unit]
+Description=RMM Agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+EnvironmentFile=-/etc/rmm-agent/rmm-agent.env
+ExecStart=/opt/rmm-agent/rmm-agent
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

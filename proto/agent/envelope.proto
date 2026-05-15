@@ -1,0 +1,22 @@
+syntax = "proto3";
+
+package agent;
+option go_package = "rmm-platform/proto/agent;agentpb";
+
+message AgentEnvelope {
+  string tenant_id = 1;
+  string agent_id = 2;
+  string message_id = 3;
+  int64 sent_at_unix = 4;
+  uint32 schema_version = 5;
+
+  oneof payload {
+    Heartbeat heartbeat = 10;
+    InventorySnapshot inventory = 11;
+    MetricsBatch metrics = 12;
+    ComplianceReport compliance = 13;
+    CommandRequest command_request = 14;
+    CommandResponse command_response = 15;
+    UpdateStatus update_status = 16;
+  }
+}

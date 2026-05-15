@@ -1,0 +1,13 @@
+go 1.25.0
+
+use (
+	./agents/core
+	./backend/broker-service
+	./backend/command-service
+	./backend/compliance-service
+	./backend/db
+	./backend/gateway-service
+	./backend/inventory-service
+	./backend/registration-service
+	./shared/go
+)

@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+package agent;
+option go_package = "rmm-platform/proto/agent;agentpb";
+
+message MetricPoint {
+  string name = 1;
+  double value = 2;
+  int64 collected_at_unix = 3;
+  map<string, string> tags = 4;
+}
+
+message MetricsBatch {
+  repeated MetricPoint points = 1;
+}

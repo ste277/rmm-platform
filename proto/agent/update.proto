@@ -1,0 +1,11 @@
+syntax = "proto3";
+
+package agent;
+option go_package = "rmm-platform/proto/agent;agentpb";
+
+message UpdateStatus {
+  string target_version = 1;
+  string status = 2;
+  string details = 3;
+  bool rollback_available = 4;
+}

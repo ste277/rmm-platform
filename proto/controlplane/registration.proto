@@ -1,0 +1,20 @@
+syntax = "proto3";
+
+package controlplane;
+option go_package = "rmm-platform/proto/controlplane;controlplanepb";
+
+message RegisterAgentRequest {
+  string tenant_id = 1;
+  string enrollment_token = 2;
+  string hostname = 3;
+  string os_family = 4;
+  string os_version = 5;
+  string architecture = 6;
+}
+
+message RegisterAgentResponse {
+  string agent_id = 1;
+  string client_certificate_pem = 2;
+  string client_key_pem = 3;
+  string broker_url = 4;
+}

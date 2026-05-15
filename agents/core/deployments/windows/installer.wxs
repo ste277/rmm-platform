@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="RMM Agent" Manufacturer="Your Company" Version="0.1.0" UpgradeCode="PUT-GUID-HERE">
+    <MediaTemplate />
+    <Feature Id="MainFeature" Title="RMM Agent" Level="1">
+      <ComponentGroupRef Id="AgentComponents" />
+    </Feature>
+  </Package>
+</Wix>

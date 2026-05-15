@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package agent;
+option go_package = "rmm-platform/proto/agent;agentpb";
+
+message ComplianceFinding {
+  string category = 1;
+  string resource_id = 2;
+  string status = 3;
+  string reason = 4;
+  string action_hint = 5;
+}
+
+message ComplianceReport {
+  repeated ComplianceFinding findings = 1;
+}

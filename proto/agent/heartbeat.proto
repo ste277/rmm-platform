@@ -1,0 +1,14 @@
+syntax = "proto3";
+
+package agent;
+option go_package = "rmm-platform/proto/agent;agentpb";
+
+message Heartbeat {
+  string hostname = 1;
+  string agent_version = 2;
+  string os_family = 3;
+  string os_version = 4;
+  int64 uptime_seconds = 5;
+  bool reboot_required = 6;
+  map<string, string> labels = 7;
+}
