@@ -1,10 +1,10 @@
-CREATE TABLE tenants (
+CREATE TABLE IF NOT EXISTS tenants (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE TABLE agents (
+CREATE TABLE IF NOT EXISTS agents (
     id TEXT PRIMARY KEY,
     tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
     hostname TEXT NOT NULL,
@@ -16,7 +16,7 @@ CREATE TABLE agents (
     last_seen_at TIMESTAMPTZ
 );
 
-CREATE TABLE agent_inventory_snapshots (
+CREATE TABLE IF NOT EXISTS agent_inventory_snapshots (
     id BIGSERIAL PRIMARY KEY,
     agent_id TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
     collected_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -25,7 +25,7 @@ CREATE TABLE agent_inventory_snapshots (
     payload JSONB NOT NULL DEFAULT '{}'::JSONB
 );
 
-CREATE TABLE installed_software (
+CREATE TABLE IF NOT EXISTS installed_software (
     id BIGSERIAL PRIMARY KEY,
     agent_id TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
@@ -35,7 +35,7 @@ CREATE TABLE installed_software (
     observed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE TABLE commands (
+CREATE TABLE IF NOT EXISTS commands (
     id TEXT PRIMARY KEY,
     tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
     agent_id TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
@@ -48,7 +48,7 @@ CREATE TABLE commands (
     finished_at TIMESTAMPTZ
 );
 
-CREATE TABLE command_results (
+CREATE TABLE IF NOT EXISTS command_results (
     id BIGSERIAL PRIMARY KEY,
     command_id TEXT NOT NULL REFERENCES commands(id) ON DELETE CASCADE,
     success BOOLEAN NOT NULL,
@@ -58,7 +58,7 @@ CREATE TABLE command_results (
     recorded_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE TABLE compliance_reports (
+CREATE TABLE IF NOT EXISTS compliance_reports (
     id BIGSERIAL PRIMARY KEY,
     agent_id TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
     report_type TEXT NOT NULL,
@@ -66,7 +66,7 @@ CREATE TABLE compliance_reports (
     generated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE TABLE compliance_findings (
+CREATE TABLE IF NOT EXISTS compliance_findings (
     id BIGSERIAL PRIMARY KEY,
     report_id BIGINT NOT NULL REFERENCES compliance_reports(id) ON DELETE CASCADE,
     category TEXT NOT NULL,
@@ -76,7 +76,7 @@ CREATE TABLE compliance_findings (
     action_hint TEXT
 );
 
-CREATE TABLE metric_samples (
+CREATE TABLE IF NOT EXISTS metric_samples (
     id BIGSERIAL PRIMARY KEY,
     agent_id TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
     metric_name TEXT NOT NULL,
@@ -85,9 +85,9 @@ CREATE TABLE metric_samples (
     tags JSONB NOT NULL DEFAULT '{}'::JSONB
 );
 
-CREATE INDEX idx_agents_tenant_id ON agents (tenant_id);
-CREATE INDEX idx_inventory_agent_id ON agent_inventory_snapshots (agent_id, collected_at DESC);
-CREATE INDEX idx_installed_software_agent_id ON installed_software (agent_id, observed_at DESC);
-CREATE INDEX idx_commands_agent_id ON commands (agent_id, created_at DESC);
-CREATE INDEX idx_compliance_reports_agent_id ON compliance_reports (agent_id, generated_at DESC);
-CREATE INDEX idx_metric_samples_agent_id ON metric_samples (agent_id, collected_at DESC);
+CREATE INDEX IF NOT EXISTS idx_agents_tenant_id ON agents (tenant_id);
+CREATE INDEX IF NOT EXISTS idx_inventory_agent_id ON agent_inventory_snapshots (agent_id, collected_at DESC);
+CREATE INDEX IF NOT EXISTS idx_installed_software_agent_id ON installed_software (agent_id, observed_at DESC);
+CREATE INDEX IF NOT EXISTS idx_commands_agent_id ON commands (agent_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_compliance_reports_agent_id ON compliance_reports (agent_id, generated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_metric_samples_agent_id ON metric_samples (agent_id, collected_at DESC);

@@ -9,8 +9,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"io"
+	"log"
 	"net"
 	"net/http"
 	"strings"
@@ -54,6 +54,32 @@ func (b *Broker) Sessions() []api.SessionSummary {
 		})
 	}
 	return out
+}
+
+// SendCommand pushes a command to a connected agent over its WebSocket session.
+// Returns an error if the agent is not currently connected.
+func (b *Broker) SendCommand(agentID string, cmd api.CommandCreateRequest) error {
+	b.mu.RLock()
+	session, ok := b.sessions[agentID]
+	b.mu.RUnlock()
+
+	if !ok {
+		return fmt.Errorf("agent %q is not connected", agentID)
+	}
+
+	payload, err := json.Marshal(map[string]any{
+		"type":           "command",
+		"command_id":     fmt.Sprintf("cmd-%d", time.Now().UnixNano()),
+		"command_type":   cmd.CommandType,
+		"script_body":    cmd.ScriptBody,
+		"args":           cmd.Args,
+		"timeout_seconds": cmd.TimeoutSec,
+	})
+	if err != nil {
+		return fmt.Errorf("marshal command: %w", err)
+	}
+
+	return session.writeText(string(payload))
 }
 
 func (b *Broker) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -111,30 +137,34 @@ func (b *Broker) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	b.sessions[agentID] = session
 	b.mu.Unlock()
 
+	log.Printf("agent connected: agent_id=%s remote=%s", agentID, session.RemoteAddr)
+
 	defer func() {
 		b.mu.Lock()
 		delete(b.sessions, agentID)
 		b.mu.Unlock()
 		_ = conn.Close()
+		log.Printf("agent disconnected: agent_id=%s", agentID)
 	}()
 
 	_ = session.writeText(`{"type":"welcome","message":"connected"}`)
+
 	for {
 		payload, opcode, err := readFrame(conn)
 		if err != nil {
 			if !errors.Is(err, io.EOF) {
-				_ = session.writeText(`{"type":"disconnect","message":"read error"}`)
+				log.Printf("read error for agent %s: %v", agentID, err)
 			}
 			return
 		}
 
 		switch opcode {
-		case 0x8:
+		case 0x8: // close
 			_ = writeControlFrame(conn, 0x8, nil)
 			return
-		case 0x9:
+		case 0x9: // ping → pong
 			_ = writeControlFrame(conn, 0xA, payload)
-		case 0x1:
+		case 0x1: // text frame
 			trimmed := strings.TrimSpace(string(payload))
 			if trimmed == "" {
 				trimmed = "{}"
@@ -142,7 +172,7 @@ func (b *Broker) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			if err := b.handleAgentMessage(session.AgentID, trimmed); err != nil {
 				log.Printf("broker ingest error for %s: %v", session.AgentID, err)
 			}
-			_ = session.writeText(fmt.Sprintf(`{"type":"ack","agent_id":"%s","payload":%q}`, session.AgentID, trimmed))
+			_ = session.writeText(fmt.Sprintf(`{"type":"ack","agent_id":"%s"}`, session.AgentID))
 		}
 	}
 }

@@ -1,4 +1,25 @@
+# Node
+node_modules/
+
+# Go
+bin/
+
+# Env
+.env
+
+# macOS
 .DS_Store
+
+# Logs
+*.log
+
+# Docker volumes
+postgres-data/
+redis-data/
+
+# Build output
+dist/
+build/.DS_Store
 .env
 dist/
 bin/

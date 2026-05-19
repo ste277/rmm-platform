@@ -1,5 +1,6 @@
 package compliance
 
+// Status values used in compliance findings.
 type Status string
 
 const (
@@ -14,6 +15,8 @@ const (
 	StatusNeedsReview       Status = "needs_review"
 )
 
+// Finding is the internal representation of a compliance check result.
+// For the wire format see api.ComplianceFinding in shared/go/api/models.go.
 type Finding struct {
 	Category   string
 	ResourceID string

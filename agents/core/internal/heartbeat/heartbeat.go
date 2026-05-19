@@ -6,9 +6,12 @@ import (
 	"runtime"
 	"time"
 
+	"example.com/rmm-shared/api"
 	"rmm-agent/internal/config"
 	"rmm-agent/internal/transport"
 )
+
+const agentVersion = "0.1.0-dev"
 
 type Service struct {
 	transport *transport.Client
@@ -23,8 +26,6 @@ func (s *Service) Start(ctx context.Context) {
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
 
-	s.SendNow()
-
 	for {
 		select {
 		case <-ctx.Done():
@@ -37,16 +38,28 @@ func (s *Service) Start(ctx context.Context) {
 
 func (s *Service) SendNow() {
 	log.Println("heartbeat tick")
-	_ = s.transport.Send(map[string]any{
-		"type":          "heartbeat",
-		"agent_id":      s.cfg.AgentID,
-		"tenant_id":     s.cfg.TenantID,
-		"hostname":      s.cfg.Hostname,
-		"agent_version": "0.1.0-dev",
-		"os_family":     runtime.GOOS,
-		"os_version":    runtime.GOARCH,
-		"labels": map[string]string{
-			"mode": map[bool]string{true: "dev", false: "managed"}[s.cfg.DevMode],
+
+	mode := "managed"
+	if s.cfg.DevMode {
+		mode = "dev"
+	}
+
+	msg := api.IngestRequest{
+		Type:      "heartbeat",
+		AgentID:   s.cfg.AgentID,
+		TenantID:  s.cfg.TenantID,
+		Hostname:  s.cfg.Hostname,
+		OSFamily:  runtime.GOOS,
+		OSVersion: runtime.GOARCH,
+		Payload: map[string]any{
+			"agent_version": agentVersion,
+			"labels": map[string]string{
+				"mode": mode,
+			},
 		},
-	})
+	}
+
+	if err := s.transport.Send(msg); err != nil {
+		log.Printf("heartbeat send error: %v", err)
+	}
 }
