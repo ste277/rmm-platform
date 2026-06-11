@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"net/http"
 	"strings"
 
@@ -17,19 +18,16 @@ func NewMux(db *store.Store) *http.ServeMux {
 	mux.HandleFunc("/healthz", healthz)
 	mux.Handle("/ws", broker)
 
-	// List active sessions
 	mux.HandleFunc("/api/v1/sessions", func(w http.ResponseWriter, _ *http.Request) {
 		httpjson.WriteJSON(w, http.StatusOK, broker.Sessions())
 	})
 
-	// Push a command to a connected agent: POST /api/v1/agent-commands/{agent_id}
 	mux.HandleFunc("/api/v1/agent-commands/", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			httpjson.MethodNotAllowed(w)
 			return
 		}
 
-		// Extract agent_id from path: /api/v1/commands/{agent_id}
 		agentID := strings.TrimPrefix(r.URL.Path, "/api/v1/agent-commands/")
 		if agentID == "" {
 			httpjson.BadRequest(w, apiError("agent_id is required in path"))
@@ -43,15 +41,22 @@ func NewMux(db *store.Store) *http.ServeMux {
 		}
 		cmd.AgentID = agentID
 
-		if err := broker.SendCommand(agentID, cmd); err != nil {
+		// 1. Persist first to get the real command ID
+		resp := api.CommandResponse{CommandID: "dev-cmd", Status: "dispatched"}
+		if db != nil {
+			if r, err := db.CreateCommand(context.Background(), cmd); err == nil {
+				resp = r
+			}
+		}
+
+		// 2. Send that same ID to the agent so results can be matched
+		if err := broker.SendCommandWithID(agentID, resp.CommandID, cmd); err != nil {
 			httpjson.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{Error: err.Error()})
 			return
 		}
 
-		httpjson.WriteJSON(w, http.StatusAccepted, api.CommandResponse{
-			CommandID: "pending",
-			Status:    "dispatched",
-		})
+		resp.Status = "dispatched"
+		httpjson.WriteJSON(w, http.StatusAccepted, resp)
 	})
 
 	return mux

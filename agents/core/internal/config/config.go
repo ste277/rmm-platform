@@ -2,7 +2,11 @@ package config
 
 import (
 	"errors"
+	"fmt"
 	"os"
+	"os/exec"
+	"runtime"
+	"strings"
 )
 
 type Config struct {
@@ -10,6 +14,7 @@ type Config struct {
 	AgentID         string
 	TenantID        string
 	Hostname        string
+	OSVersion       string
 	EnrollmentToken string
 	DevMode         bool
 }
@@ -21,6 +26,7 @@ func Load() (Config, error) {
 		TenantID:        os.Getenv("RMM_TENANT_ID"),
 		EnrollmentToken: os.Getenv("RMM_ENROLLMENT_TOKEN"),
 		Hostname:        hostnameOrDefault(),
+		OSVersion:       detectOSVersion(),
 		DevMode:         os.Getenv("RMM_DEV_MODE") == "true",
 	}
 
@@ -36,7 +42,6 @@ func Load() (Config, error) {
 			cfg.TenantID = "dev-tenant"
 		}
 	} else {
-		// In production, TenantID is required; AgentID can come from registration
 		if cfg.TenantID == "" {
 			return Config{}, errors.New("RMM_TENANT_ID is required in production mode")
 		}
@@ -55,4 +60,53 @@ func hostnameOrDefault() string {
 		return "unknown-host"
 	}
 	return name
+}
+
+// detectOSVersion returns a human-readable OS version string.
+func detectOSVersion() string {
+	switch runtime.GOOS {
+	case "darwin":
+		return darwinVersion()
+	case "linux":
+		return linuxVersion()
+	case "windows":
+		return windowsVersion()
+	default:
+		return fmt.Sprintf("%s/%s", runtime.GOOS, runtime.GOARCH)
+	}
+}
+
+func darwinVersion() string {
+	out, err := exec.Command("sw_vers", "-productVersion").Output()
+	if err != nil {
+		return "macOS unknown"
+	}
+	return "macOS " + strings.TrimSpace(string(out))
+}
+
+func linuxVersion() string {
+	// Try /etc/os-release first
+	data, err := os.ReadFile("/etc/os-release")
+	if err == nil {
+		for _, line := range strings.Split(string(data), "\n") {
+			if strings.HasPrefix(line, "PRETTY_NAME=") {
+				val := strings.TrimPrefix(line, "PRETTY_NAME=")
+				return strings.Trim(val, `"`)
+			}
+		}
+	}
+	// Fallback: uname
+	out, err := exec.Command("uname", "-r").Output()
+	if err != nil {
+		return "Linux unknown"
+	}
+	return "Linux " + strings.TrimSpace(string(out))
+}
+
+func windowsVersion() string {
+	out, err := exec.Command("cmd", "/c", "ver").Output()
+	if err != nil {
+		return "Windows unknown"
+	}
+	return strings.TrimSpace(string(out))
 }

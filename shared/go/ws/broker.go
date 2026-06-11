@@ -44,46 +44,42 @@ func NewBroker(db *store.Store) *Broker {
 func (b *Broker) Sessions() []api.SessionSummary {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
-
 	out := make([]api.SessionSummary, 0, len(b.sessions))
-	for _, session := range b.sessions {
+	for _, s := range b.sessions {
 		out = append(out, api.SessionSummary{
-			AgentID:     session.AgentID,
-			RemoteAddr:  session.RemoteAddr,
-			ConnectedAt: session.ConnectedAt.Format(time.RFC3339),
+			AgentID:     s.AgentID,
+			RemoteAddr:  s.RemoteAddr,
+			ConnectedAt: s.ConnectedAt.Format(time.RFC3339),
 		})
 	}
 	return out
 }
 
 // SendCommand pushes a command to a connected agent over its WebSocket session.
-// Returns an error if the agent is not currently connected.
 func (b *Broker) SendCommand(agentID string, cmd api.CommandCreateRequest) error {
 	b.mu.RLock()
 	session, ok := b.sessions[agentID]
 	b.mu.RUnlock()
-
 	if !ok {
 		return fmt.Errorf("agent %q is not connected", agentID)
 	}
-
 	payload, err := json.Marshal(map[string]any{
-		"type":           "command",
-		"command_id":     fmt.Sprintf("cmd-%d", time.Now().UnixNano()),
-		"command_type":   cmd.CommandType,
-		"script_body":    cmd.ScriptBody,
-		"args":           cmd.Args,
+		"type":            "command",
+		"command_id":      fmt.Sprintf("cmd-%d", time.Now().UnixNano()),
+		"command_type":    cmd.CommandType,
+		"script_body":     cmd.ScriptBody,
+		"args":            cmd.Args,
 		"timeout_seconds": cmd.TimeoutSec,
 	})
 	if err != nil {
 		return fmt.Errorf("marshal command: %w", err)
 	}
-
 	return session.writeText(string(payload))
 }
 
 func (b *Broker) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if !headerContainsToken(r.Header, "Connection", "Upgrade") || !headerContainsToken(r.Header, "Upgrade", "websocket") {
+	if !headerContainsToken(r.Header, "Connection", "Upgrade") ||
+		!headerContainsToken(r.Header, "Upgrade", "websocket") {
 		http.Error(w, "websocket upgrade required", http.StatusUpgradeRequired)
 		return
 	}
@@ -145,6 +141,12 @@ func (b *Broker) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		b.mu.Unlock()
 		_ = conn.Close()
 		log.Printf("agent disconnected: agent_id=%s", agentID)
+		// Mark offline immediately on disconnect
+		if b.store != nil {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			_ = b.store.MarkAgentsOffline(ctx, 0)
+		}
 	}()
 
 	_ = session.writeText(`{"type":"welcome","message":"connected"}`)
@@ -182,6 +184,32 @@ func (b *Broker) handleAgentMessage(sessionAgentID, payload string) error {
 		return nil
 	}
 
+	// Peek at message type
+	var envelope struct {
+		Type string `json:"type"`
+	}
+	if err := json.Unmarshal([]byte(payload), &envelope); err != nil {
+		return err
+	}
+
+	// Handle command results specially — update the command record
+	if envelope.Type == "command_result" {
+		var result api.CommandResult
+		if err := json.Unmarshal([]byte(payload), &result); err != nil {
+			return err
+		}
+		return b.store.RecordCommandResult(context.Background(), api.IngestRequest{
+			Type:    "command_result",
+			AgentID: sessionAgentID,
+			Payload: map[string]any{
+				"command_id": result.CommandID,
+				"exit_code":  float64(result.ExitCode),
+				"output":     result.Output,
+				"error":      result.Error,
+			},
+		})
+	}
+
 	var req api.IngestRequest
 	if err := json.Unmarshal([]byte(payload), &req); err != nil {
 		return err
@@ -217,11 +245,9 @@ func readFrame(r io.Reader) ([]byte, byte, error) {
 	if _, err := io.ReadFull(r, header[:]); err != nil {
 		return nil, 0, err
 	}
-
 	opcode := header[0] & 0x0F
 	masked := header[1]&0x80 != 0
 	length := int(header[1] & 0x7F)
-
 	switch length {
 	case 126:
 		var ext uint16
@@ -236,19 +262,16 @@ func readFrame(r io.Reader) ([]byte, byte, error) {
 		}
 		length = int(ext)
 	}
-
 	var maskKey [4]byte
 	if masked {
 		if _, err := io.ReadFull(r, maskKey[:]); err != nil {
 			return nil, 0, err
 		}
 	}
-
 	payload := make([]byte, length)
 	if _, err := io.ReadFull(r, payload); err != nil {
 		return nil, 0, err
 	}
-
 	if masked {
 		for i := range payload {
 			payload[i] ^= maskKey[i%4]
@@ -263,11 +286,9 @@ func writeControlFrame(w io.Writer, opcode byte, payload []byte) error {
 
 func writeDataFrame(w io.Writer, opcode byte, payload []byte) error {
 	bw := bufio.NewWriter(w)
-	first := byte(0x80 | opcode)
-	if err := bw.WriteByte(first); err != nil {
+	if err := bw.WriteByte(byte(0x80 | opcode)); err != nil {
 		return err
 	}
-
 	length := len(payload)
 	switch {
 	case length < 126:
@@ -289,9 +310,30 @@ func writeDataFrame(w io.Writer, opcode byte, payload []byte) error {
 			return err
 		}
 	}
-
 	if _, err := bw.Write(payload); err != nil {
 		return err
 	}
 	return bw.Flush()
+}
+
+// SendCommandWithID pushes a command to the agent using a pre-assigned command ID.
+func (b *Broker) SendCommandWithID(agentID, commandID string, cmd api.CommandCreateRequest) error {
+	b.mu.RLock()
+	session, ok := b.sessions[agentID]
+	b.mu.RUnlock()
+	if !ok {
+		return fmt.Errorf("agent %q is not connected", agentID)
+	}
+	payload, err := json.Marshal(map[string]any{
+		"type":            "command",
+		"command_id":      commandID,
+		"command_type":    cmd.CommandType,
+		"script_body":     cmd.ScriptBody,
+		"args":            cmd.Args,
+		"timeout_seconds": cmd.TimeoutSec,
+	})
+	if err != nil {
+		return fmt.Errorf("marshal command: %w", err)
+	}
+	return session.writeText(string(payload))
 }

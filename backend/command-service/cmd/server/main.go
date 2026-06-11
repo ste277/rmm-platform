@@ -5,8 +5,9 @@ import (
 	"net/http"
 	"os"
 
-	"command-service/internal/httpapi"
+	"example.com/rmm-shared/httpjson"
 	"example.com/rmm-shared/store"
+	"command-service/internal/httpapi"
 )
 
 func main() {
@@ -19,7 +20,7 @@ func main() {
 		defer func() { _ = db.Close() }()
 	}
 	log.Printf("command service listening on %s", addr)
-	log.Fatal(http.ListenAndServe(addr, httpapi.NewMux(db)))
+	log.Fatal(http.ListenAndServe(addr, httpjson.WithCORS(httpapi.NewMux(db))))
 }
 
 func envOrDefault(key, fallback string) string {

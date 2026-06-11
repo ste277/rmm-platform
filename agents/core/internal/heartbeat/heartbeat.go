@@ -11,7 +11,7 @@ import (
 	"rmm-agent/internal/transport"
 )
 
-const agentVersion = "0.1.0-dev"
+const agentVersion = "0.1.0"
 
 type Service struct {
 	transport *transport.Client
@@ -50,7 +50,7 @@ func (s *Service) SendNow() {
 		TenantID:  s.cfg.TenantID,
 		Hostname:  s.cfg.Hostname,
 		OSFamily:  runtime.GOOS,
-		OSVersion: runtime.GOARCH,
+		OSVersion: s.cfg.OSVersion,
 		Payload: map[string]any{
 			"agent_version": agentVersion,
 			"labels": map[string]string{

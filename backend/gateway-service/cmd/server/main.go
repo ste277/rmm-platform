@@ -1,12 +1,15 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net/http"
 	"os"
+	"time"
 
-	"gateway-service/internal/httpapi"
+	"example.com/rmm-shared/httpjson"
 	"example.com/rmm-shared/store"
+	"gateway-service/internal/httpapi"
 )
 
 func main() {
@@ -17,9 +20,19 @@ func main() {
 	}
 	if db != nil {
 		defer func() { _ = db.Close() }()
+		// Evaluate alert rules every 60s
+		go func() {
+			ticker := time.NewTicker(60 * time.Second)
+			defer ticker.Stop()
+			for range ticker.C {
+				if err := db.EvaluateAlerts(context.Background()); err != nil {
+					log.Printf("alert evaluation error: %v", err)
+				}
+			}
+		}()
 	}
 	log.Printf("gateway service listening on %s", addr)
-	log.Fatal(http.ListenAndServe(addr, httpapi.NewMux(db)))
+	log.Fatal(http.ListenAndServe(addr, httpjson.WithCORS(httpapi.NewMux(db))))
 }
 
 func envOrDefault(key, fallback string) string {

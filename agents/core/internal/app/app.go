@@ -31,8 +31,8 @@ func New() (*App, error) {
 		return nil, err
 	}
 
-	// Phase 3: Registration — enrol with the platform to get AgentID + BrokerURL.
-	// Skipped in dev mode where env var defaults are sufficient.
+	// Registration: enrol with the platform to get AgentID + BrokerURL.
+	// Skipped in dev mode.
 	if !cfg.DevMode && (cfg.AgentID == "" || cfg.AgentID == "dev-agent") {
 		regClient := registration.NewClient(cfg.ServerURL)
 		resp, err := regClient.Enrol(
@@ -51,10 +51,19 @@ func New() (*App, error) {
 
 	t := transport.NewClient(cfg.ServerURL, cfg.AgentID)
 
+	hb := heartbeat.New(t, cfg)
+
+	// Send a heartbeat immediately whenever the WebSocket reconnects
+	// so the broker knows the agent is back online without waiting 30s.
+	t.SetOnReconnect(func() {
+		log.Println("reconnected — sending immediate heartbeat")
+		hb.SendNow()
+	})
+
 	return &App{
 		cfg:        cfg,
 		transport:  t,
-		heartbeat:  heartbeat.New(t, cfg),
+		heartbeat:  hb,
 		inventory:  inventory.NewService(t, cfg),
 		telemetry:  telemetry.NewService(t, cfg),
 		compliance: compliance.NewService(t, cfg),
@@ -63,17 +72,16 @@ func New() (*App, error) {
 }
 
 func (a *App) Run(ctx context.Context) error {
-	log.Printf("agent starting: agent_id=%s tenant_id=%s dev_mode=%t",
-		a.cfg.AgentID, a.cfg.TenantID, a.cfg.DevMode)
+	log.Printf("agent starting: agent_id=%s tenant_id=%s os_version=%s dev_mode=%t",
+		a.cfg.AgentID, a.cfg.TenantID, a.cfg.OSVersion, a.cfg.DevMode)
 
 	if err := a.transport.Connect(ctx); err != nil {
 		return err
 	}
 
-	// Immediate first heartbeat before the ticker starts
+	// Immediate first heartbeat
 	a.heartbeat.SendNow()
 
-	// Start all background goroutines
 	go a.heartbeat.Start(ctx)
 	go a.inventory.Start(ctx)
 	go a.telemetry.Start(ctx)

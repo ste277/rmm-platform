@@ -19,13 +19,18 @@ const (
 	maxBackoff     = 60 * time.Second
 )
 
+// OnReconnect is called after a successful WebSocket reconnect.
+// Set this in app.go to trigger an immediate heartbeat.
+type OnReconnect func()
+
 type Client struct {
-	serverURL string
-	agentID   string
-	http      *http.Client
-	ws        *ws.Client
-	mu        sync.RWMutex
-	connected bool
+	serverURL   string
+	agentID     string
+	http        *http.Client
+	ws          *ws.Client
+	mu          sync.RWMutex
+	connected   bool
+	onReconnect OnReconnect
 }
 
 func NewClient(serverURL string, agentID string) *Client {
@@ -38,6 +43,11 @@ func NewClient(serverURL string, agentID string) *Client {
 	}
 }
 
+// SetOnReconnect registers a callback fired after each successful reconnect.
+func (c *Client) SetOnReconnect(fn OnReconnect) {
+	c.onReconnect = fn
+}
+
 func (c *Client) Connect(ctx context.Context) error {
 	log.Printf("connecting agent transport to %s", c.serverURL)
 
@@ -46,7 +56,8 @@ func (c *Client) Connect(ctx context.Context) error {
 	}
 
 	if strings.HasPrefix(c.serverURL, "http://") || strings.HasPrefix(c.serverURL, "https://") {
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(c.serverURL, "/")+"/healthz", nil)
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet,
+			strings.TrimRight(c.serverURL, "/")+"/healthz", nil)
 		if err == nil {
 			resp, err := c.http.Do(req)
 			if err == nil && resp.Body != nil {
@@ -68,17 +79,14 @@ func (c *Client) connectWebSocket(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("websocket dial: %w", err)
 	}
-
 	c.mu.Lock()
 	c.ws = socket
 	c.connected = true
 	c.mu.Unlock()
-
 	go c.reconnectLoop(ctx, wsURL)
 	return nil
 }
 
-// wsURL builds the full WebSocket URL including agent_id query param.
 func (c *Client) wsURL() string {
 	u := c.serverURL
 	if c.agentID != "" {
@@ -91,11 +99,9 @@ func (c *Client) wsURL() string {
 	return u
 }
 
-// reconnectLoop watches for a dropped WebSocket and reconnects with exponential backoff.
 func (c *Client) reconnectLoop(ctx context.Context, wsURL string) {
 	backoff := initialBackoff
 	for {
-		// Check every 5 seconds whether the socket is still alive
 		select {
 		case <-ctx.Done():
 			return
@@ -107,11 +113,10 @@ func (c *Client) reconnectLoop(ctx context.Context, wsURL string) {
 		c.mu.RUnlock()
 
 		if socket != nil {
-			backoff = initialBackoff // still connected — reset backoff
+			backoff = initialBackoff
 			continue
 		}
 
-		// Socket is nil — attempt reconnect
 		log.Printf("websocket disconnected, reconnecting in %s...", backoff)
 		select {
 		case <-ctx.Done():
@@ -133,6 +138,11 @@ func (c *Client) reconnectLoop(ctx context.Context, wsURL string) {
 
 		log.Printf("websocket reconnected successfully")
 		backoff = initialBackoff
+
+		// Fire reconnect callback so heartbeat is sent immediately
+		if c.onReconnect != nil {
+			go c.onReconnect()
+		}
 	}
 }
 
@@ -182,8 +192,6 @@ func (c *Client) Send(msg any) error {
 	return nil
 }
 
-// Receive reads a raw JSON message from the WebSocket.
-// Only available when connected via ws:// or wss://.
 func (c *Client) Receive() ([]byte, error) {
 	c.mu.RLock()
 	socket := c.ws
@@ -203,7 +211,6 @@ func (c *Client) Receive() ([]byte, error) {
 	return raw, nil
 }
 
-// IsWebSocket reports whether the transport is currently connected via WebSocket.
 func (c *Client) IsWebSocket() bool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
