@@ -80,7 +80,9 @@ func (h *Handler) ingest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if h.store != nil {
-		switch req.Type {
+	switch req.Type {
+		case "heartbeat":
+			_ = h.store.RecordHeartbeat(context.Background(), req)
 		case "inventory":
 			_ = h.store.UpsertInventory(context.Background(), api.InventoryRecord{
 				AgentID: req.AgentID, Hostname: req.Hostname, OSFamily: req.OSFamily,
@@ -91,7 +93,7 @@ func (h *Handler) ingest(w http.ResponseWriter, r *http.Request) {
 			_ = h.store.SaveComplianceReport(context.Background(), api.ComplianceReport{
 				AgentID: req.AgentID, Status: req.Status, Findings: req.Findings,
 			})
-		}
+	}
 	}
 	httpjson.WriteJSON(w, http.StatusAccepted, api.AcceptedResponse{Status: "accepted"})
 }
@@ -298,3 +300,9 @@ func (h *Handler) alertEvents(w http.ResponseWriter, _ *http.Request) {
 type apiError string
 
 func (e apiError) Error() string { return string(e) }
+// Note: add these routes in NewMux after existing routes
+// mux.HandleFunc("/api/v1/scripts", h.withAuth(h.scripts))
+// mux.HandleFunc("/api/v1/scripts/", h.withAuth(h.scriptByID))
+// mux.HandleFunc("/api/v1/alert-rules", h.withAuth(h.alertRules))
+// mux.HandleFunc("/api/v1/alert-rules/", h.withAuth(h.alertRuleByID))
+// mux.HandleFunc("/api/v1/alert-events", h.withAuth(h.alertEvents))

@@ -212,12 +212,18 @@ func (b *Broker) handleAgentMessage(sessionAgentID, payload string) error {
 
 	var req api.IngestRequest
 	if err := json.Unmarshal([]byte(payload), &req); err != nil {
+		log.Printf("DEBUG unmarshal error for agent %s: %v raw=%s", sessionAgentID, err, payload)
 		return err
 	}
 	if req.AgentID == "" {
 		req.AgentID = sessionAgentID
 	}
-	return b.store.ProcessIngest(context.Background(), req)
+	log.Printf("DEBUG processing ingest type=%s agent_id=%s tenant_id=%s", req.Type, req.AgentID, req.TenantID)
+	err := b.store.ProcessIngest(context.Background(), req)
+	if err != nil {
+		log.Printf("DEBUG ProcessIngest error: %v", err)
+	}
+	return err
 }
 
 func (s *Session) writeText(message string) error {
